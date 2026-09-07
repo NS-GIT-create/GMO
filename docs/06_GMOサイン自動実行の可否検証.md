@@ -11,6 +11,48 @@
 
 ---
 
+## 追記（2026-09-07 20:2x JST）: ヘッドレスブラウザ実行の検証結果
+
+認証情報を正本から取得しログイン試行を実施したが、**ページ読み込み段階で失敗**。
+**認証情報はGMOサインへ送信されていない**（ログインフォームに到達していないため）。
+アカウントロックのリスクは発生していない。
+
+| 手順 | 結果 |
+|---|---|
+| playwright-core 導入 | 成功 |
+| Chromium 起動（`/opt/pw-browsers/chromium-1194/...`） | 成功 |
+| `https://secure.gmosign.com/login/` へ遷移 | **失敗 `net::ERR_CONNECTION_RESET`** |
+| HTTP/2・QUIC 無効化（`--disable-http2 --disable-quic`）で再試行 | **失敗（同上）** |
+| 対照試験 `https://example.com/` | **失敗（同上）** |
+
+### 原因：エージェントプロキシとヘッドレスChromiumの非互換
+
+プロキシの `recentRelayFailures` が示す実測値：
+
+```
+example.com:443        ws_closed_mid_exchange  tunnel closed (code 1006) after 6s; 1741 B sent, 39 B received
+secure.gmosign.com:443 ws_closed_mid_exchange  tunnel closed (code 1006) after 6s; 1748 B sent, 39 B received
+```
+
+- **全HTTPSホストで同一の症状**が出る（example.com も同じ）。GMOサイン固有の問題ではない。
+- 同一ホストへ `curl` は正常（HTTP 200 / 54,803 bytes 取得済み）。**egressポリシー上は許可されている。**
+- Chromiumのトンネルのみが毎回6秒で切断される。
+
+プロキシREADMEの分類では「connection reset / unexpected disconnect」＝
+**回避せず報告すべき事象**。TLS検証の無効化・`HTTPS_PROXY` の解除はいずれも禁止事項のため実施しない。
+
+**→ 本環境ではヘッドレスブラウザによるGUI自動化そのものが成立しない。**
+　 署名位置のドラッグ&ドロップだけでなく、ログイン・PDF登録・受信者設定を含む全工程が対象。
+
+### 対応
+
+GUI操作は全工程を人手で行う。人手作業を最小化するため、
+判断不要・コピペ可能の1枚シート **`docs/07_送信オペレーターカード.md`** を作成した。
+
+なお、認証情報の一時ファイルは検証後に削除済み（`shred -u /tmp/gmo/.env`）。
+
+---
+
 ## 検証1: GMOサインログイン機構（到達性・フォーム構造）
 
 | 項目 | 結果 |
